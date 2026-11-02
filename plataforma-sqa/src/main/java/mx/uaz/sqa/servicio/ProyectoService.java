@@ -14,6 +14,7 @@ import mx.uaz.sqa.dominio.modelo.Validaciones;
 import mx.uaz.sqa.persistencia.ProyectoRepository;
 import mx.uaz.sqa.servicio.dto.DatosProyecto;
 import mx.uaz.sqa.servicio.dto.ProyectoResumen;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,7 +66,13 @@ public class ProyectoService {
         if (proyectos.existsByNombreIgnoreCaseAndPeriodoEtiquetaIgnoreCase(nuevo.getNombre(), periodo.getEtiqueta())) {
             throw duplicado(nuevo.getNombre(), periodo);
         }
-        return proyectos.save(nuevo);
+        try {
+            // saveAndFlush fuerza el INSERT aquí para atrapar la violación de la restricción única
+            // si otra petición guardó el mismo proyecto entre la validación y el commit (condición de carrera).
+            return proyectos.saveAndFlush(nuevo);
+        } catch (DataIntegrityViolationException e) {
+            throw duplicado(nuevo.getNombre(), periodo);
+        }
     }
 
     /** RS-02: actualiza nombre, descripción, tecnologías y periodo. */
@@ -77,6 +84,11 @@ public class ProyectoService {
             throw duplicado(nombre, periodo);
         }
         proyecto.actualizarDatos(nombre, datos.descripcion(), datos.tecnologias(), periodo);
+        try {
+            proyectos.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw duplicado(nombre, periodo);
+        }
         return proyecto;
     }
 
